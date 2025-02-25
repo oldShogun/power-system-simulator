@@ -14,12 +14,9 @@
 #include "../Utils/PS_Logger.hpp"
 #include "../PowerFlow/PS_PowerFlowSolver.hpp"
 #include "../Integration/PS_AdaptiveIntegrator.hpp"
-#include "../Integration/PS_MultiRateIntegrator.hpp"
 #include <memory>
 #include <string>
 #include <functional>
-#include <vector>
-#include <deque>
 
 namespace PowerSystem {
 
@@ -42,15 +39,6 @@ namespace PowerSystem {
         IntegrationMethodType integrationMethod; ///< Метод интегрирования
         PowerFlowMethod powerFlowMethod;         ///< Метод расчета потокораспределения
 
-        // Новые параметры
-        bool useMultiRateIntegration;            ///< Использовать многоскоростное интегрирование
-        bool useParallelComputing;               ///< Использовать параллельные вычисления
-        int maxJacobianReuse;                    ///< Максимальное число повторных использований Якоби
-        bool usePartialUpdateJacobian;           ///< Использовать частичное обновление Якоби
-        double energyBalanceTolerance;           ///< Допустимая погрешность в энергетическом балансе
-        double rapidChangeThreshold;             ///< Порог для определения быстрых изменений
-        int numThreads;                          ///< Количество потоков для параллельных вычислений
-
         /**
          * @brief Конструктор с параметрами по умолчанию
          */
@@ -68,37 +56,8 @@ namespace PowerSystem {
             convergenceTolerance(1e-3),
             calculatePowerFlow(true),
             integrationMethod(IntegrationMethodType::RK4),
-            powerFlowMethod(PowerFlowMethod::NEWTON_RAPHSON),
-            // Новые параметры
-            useMultiRateIntegration(false),
-            useParallelComputing(false),
-            maxJacobianReuse(3),
-            usePartialUpdateJacobian(false),
-            energyBalanceTolerance(1e-3),
-            rapidChangeThreshold(0.1),
-            numThreads(4) {
+            powerFlowMethod(PowerFlowMethod::NEWTON_RAPHSON) {
         }
-    };
-
-    /**
-     * @brief Структура для сохранения состояния системы
-     */
-    struct SystemState {
-        Types::TimeType time;                                              ///< Время снимка состояния
-        std::map<Types::ElementId, std::shared_ptr<Bus>> buses;           ///< Копии узлов
-        std::map<Types::ElementId, std::shared_ptr<Generator>> generators; ///< Копии генераторов
-        std::map<Types::ElementId, std::shared_ptr<SynchronousGenerator>> syncGenerators; ///< Копии синхронных генераторов
-        std::map<Types::ElementId, GeneratorInterface> interfaces;        ///< Копии интерфейсов генераторов
-    };
-
-    /**
-     * @brief Структура для события в системе
-     */
-    struct ScheduledEvent {
-        Types::TimeType time;                ///< Время события
-        std::string type;                    ///< Тип события
-        Types::ElementId elementId;          ///< ID элемента
-        std::map<std::string, double> params; ///< Параметры события
     };
 
     /**
@@ -116,7 +75,6 @@ namespace PowerSystem {
         // Решатели
         std::unique_ptr<IPowerFlowSolver> m_powerFlowSolver;    ///< Решатель потокораспределения
         std::unique_ptr<IAdaptiveIntegrator> m_adaptiveIntegrator; ///< Адаптивный интегратор
-        std::unique_ptr<IMultiRateIntegrator> m_multiRateIntegrator; ///< Многоскоростной интегратор
 
         // Колбэки для различных событий
         std::function<void(Types::TimeType)> m_stepCallback;      ///< Колбэк на каждом шаге моделирования
@@ -125,10 +83,7 @@ namespace PowerSystem {
         std::function<void(PowerFlowResults&)> m_powerFlowCallback; ///< Колбэк после расчета потокораспределения
 
         // Рабочие данные
-        PowerFlowResults m_powerFlowResults;                  ///< Результаты последнего расчета потокораспределения
-        SystemState m_savedState;                             ///< Сохраненное состояние для отката
-        std::deque<SystemState> m_stateHistory;               ///< История состояний системы
-        std::vector<ScheduledEvent> m_scheduledEvents;        ///< Запланированные события
+        PowerFlowResults m_powerFlowResults;                 ///< Результаты последнего расчета потокораспределения
 
     public:
         /**
@@ -218,12 +173,6 @@ namespace PowerSystem {
         void setPowerFlowCallback(std::function<void(PowerFlowResults&)> callback);
 
         /**
-         * @brief Добавить запланированное событие
-         * @param event Событие для добавления в расписание
-         */
-        void addScheduledEvent(const ScheduledEvent& event);
-
-        /**
          * @brief Инициализировать симулятор
          * @return true в случае успеха, false в случае ошибки
          * @throw InitializationException при ошибках инициализации
@@ -303,58 +252,6 @@ namespace PowerSystem {
          * @return true в случае успеха, false в случае ошибки
          */
         bool predictorCorrectorStep(Types::TimeType timeStep);
-
-        /**
-         * @brief Сохранить текущее состояние системы для возможного отката
-         */
-        void saveSystemState();
-
-        /**
-         * @brief Восстановить сохраненное состояние системы
-         */
-        void restoreSystemState();
-
-        /**
-         * @brief Вычислить максимальную невязку по напряжениям и токам
-         * @param prevVoltages Предыдущие значения напряжений
-         * @param prevCurrents Предыдущие значения токов
-         * @return Максимальная невязка
-         */
-        double calculateMaxMismatch(
-            std::map<Types::ElementId, Types::Complex>& prevVoltages,
-            std::map<Types::ElementId, Types::Complex>& prevCurrents);
-
-        /**
-         * @brief Определить, происходят ли быстрые изменения в системе
-         * @return true если происходят быстрые изменения, false иначе
-         */
-        bool isRapidChange();
-
-        /**
-         * @brief Проверить энергетический баланс системы
-         * @return true если баланс в пределах допустимой погрешности, false иначе
-         */
-        bool checkEnergyBalance();
-
-        /**
-         * @brief Обработать запланированные события
-         * @param time Текущее время
-         * @return true в случае успеха, false в случае ошибки
-         */
-        bool processScheduledEvents(Types::TimeType time);
-
-        /**
-         * @brief Выбрать шаг интегрирования на основе запланированных событий
-         * @param currentTime Текущее время
-         * @param suggestedStep Предлагаемый шаг
-         * @return Скорректированный шаг
-         */
-        Types::TimeType adjustStepForEvents(Types::TimeType currentTime, Types::TimeType suggestedStep);
-
-        /**
-         * @brief Обновить историю состояний системы
-         */
-        void updateStateHistory();
     };
 
 } // namespace PowerSystem
