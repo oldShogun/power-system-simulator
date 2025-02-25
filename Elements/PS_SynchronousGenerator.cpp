@@ -467,7 +467,8 @@ namespace PowerSystem {
         }
 
         // Расчет выходных переменных модели
-        std::vector<double> modelOutputs(m_model->getOutputSize());
+        int outputSize = m_model->getOutputSize();
+        std::vector<double> modelOutputs(outputSize);
         if (!m_model->calculateOutputs(m_state_variables, modelInputs, modelOutputs)) {
             return false;
         }
@@ -485,8 +486,21 @@ namespace PowerSystem {
         double iImag = id * std::cos(delta) - iq * std::sin(delta);
         interface.current = Types::Complex(iReal, iImag);
 
-        interface.activePower = modelOutputs[6];      // Активная мощность
-        interface.reactivePower = modelOutputs[7];    // Реактивная мощность
+
+        // Проверка доступа к индексу для реактивной мощности
+        // Модель SimplifiedGeneratorModel возвращает 6 выходов (0-5), а полная модель ParkGorevGeneratorModel - 8 (0-7)
+        if (outputSize > 7) {
+            interface.activePower = modelOutputs[6];      // Активная мощность
+            interface.reactivePower = modelOutputs[7];    // Реактивная мощность
+        }
+        else if (outputSize > 5) {
+            interface.activePower = modelOutputs[4];      // Для упрощенной модели активная мощность на индексе 4
+            interface.reactivePower = modelOutputs[5];    // Для упрощенной модели реактивная мощность на индексе 5
+        }
+        else {
+            interface.reactivePower = 0.0;               // Запасной вариант, если индекс недоступен
+        }
+
         interface.excitationCurrent = modelOutputs[2]; // Ток возбуждения
         interface.timestamp = time;
 
@@ -543,7 +557,8 @@ namespace PowerSystem {
         }
 
         // Расчет выходных переменных модели
-        std::vector<double> modelOutputs(m_model->getOutputSize());
+        int outputSize = m_model->getOutputSize();
+        std::vector<double> modelOutputs(outputSize);
         if (!m_model->calculateOutputs(m_state_variables, modelInputs, modelOutputs)) {
             return false;
         }
@@ -561,8 +576,19 @@ namespace PowerSystem {
         double iImag = id * std::cos(delta) - iq * std::sin(delta);
         interface.current = Types::Complex(iReal, iImag);
 
-        interface.activePower = modelOutputs[6];      // Активная мощность
-        interface.reactivePower = modelOutputs[7];    // Реактивная мощность
+
+        if (outputSize > 7) {
+            interface.activePower = modelOutputs[6];      // Активная мощность
+            interface.reactivePower = modelOutputs[7];    // Реактивная мощность
+        }
+        else if (outputSize > 5) {
+            interface.activePower = modelOutputs[4];      // Для упрощенной модели активная мощность на индексе 4
+            interface.reactivePower = modelOutputs[5];    // Для упрощенной модели реактивная мощность на индексе 5
+        }
+        else {
+            interface.reactivePower = 0.0;               // Запасной вариант, если индекс недоступен
+        }
+
         interface.excitationCurrent = modelOutputs[2]; // Ток возбуждения
         interface.timestamp = time;
 
