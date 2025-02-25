@@ -17,6 +17,9 @@
 
 namespace PowerSystem {
 
+    // Опережающее объявление ScheduledEvent для использования в AdaptiveIntegrator
+    struct ScheduledEvent;
+
     /**
      * @brief Интерфейс адаптивного интегратора
      */
@@ -42,10 +45,10 @@ namespace PowerSystem {
          * @return true в случае успеха, false в случае ошибки
          */
         virtual bool step(ComputeFunction computeFunc,
-                        Types::TimeType currentTime,
-                        Types::TimeType suggestedStep,
-                        Types::TimeType& newTime,
-                        Types::TimeType& actualStep) = 0;
+            Types::TimeType currentTime,
+            Types::TimeType suggestedStep,
+            Types::TimeType& newTime,
+            Types::TimeType& actualStep) = 0;
 
         /**
          * @brief Установить минимальный шаг
@@ -86,6 +89,18 @@ namespace PowerSystem {
         std::unique_ptr<IIntegrationMethod> m_method;   ///< Метод интегрирования
         std::unique_ptr<IIntegrationMethod> m_errorMethod; ///< Метод для оценки погрешности
 
+        std::vector<double> m_state;                    ///< Текущее состояние
+        std::vector<double> m_errorState;               ///< Состояние для оценки погрешности
+        std::vector<double> m_inputs;                   ///< Текущие входные данные
+        std::vector<double> m_derivatives;              ///< Текущие производные
+        std::vector<double> m_prevDerivatives;          ///< Предыдущие производные
+
+        double m_nextStepScale;                         ///< Масштаб для следующего шага
+        double m_lowRateThreshold;                      ///< Порог низкой скорости изменения
+        double m_highRateThreshold;                     ///< Порог высокой скорости изменения
+
+        std::vector<ScheduledEvent> m_scheduledEvents;  ///< Запланированные события
+
     public:
         /**
          * @brief Конструктор
@@ -93,7 +108,7 @@ namespace PowerSystem {
          * @param errorMethod Метод для оценки погрешности (обычно меньшего порядка)
          */
         AdaptiveIntegrator(std::unique_ptr<IIntegrationMethod> method,
-                         std::unique_ptr<IIntegrationMethod> errorMethod);
+            std::unique_ptr<IIntegrationMethod> errorMethod);
 
         /**
          * @brief Деструктор
@@ -110,10 +125,10 @@ namespace PowerSystem {
          * @return true в случае успеха, false в случае ошибки
          */
         bool step(ComputeFunction computeFunc,
-                Types::TimeType currentTime,
-                Types::TimeType suggestedStep,
-                Types::TimeType& newTime,
-                Types::TimeType& actualStep) override;
+            Types::TimeType currentTime,
+            Types::TimeType suggestedStep,
+            Types::TimeType& newTime,
+            Types::TimeType& actualStep) override;
 
         /**
          * @brief Установить минимальный шаг
@@ -146,10 +161,57 @@ namespace PowerSystem {
         void setMaxStepReductions(int maxReductions);
 
         /**
+         * @brief Установить пороги для определения скорости изменения
+         * @param lowRate Порог низкой скорости изменения
+         * @param highRate Порог высокой скорости изменения
+         */
+        void setRateThresholds(double lowRate, double highRate);
+
+        /**
+         * @brief Установить запланированные события
+         * @param events Вектор запланированных событий
+         */
+        void setScheduledEvents(const std::vector<ScheduledEvent>& events);
+
+        /**
          * @brief Установить логгер
          * @param logger Указатель на логгер
          */
         void setLogger(std::shared_ptr<Logger> logger) override;
+
+    private:
+        /**
+         * @brief Анализ характера изменения переменных состояния
+         * @param suggestedStep Предлагаемый шаг
+         * @return Рекомендуемый шаг
+         */
+        Types::TimeType analyzeStateDerivatives(Types::TimeType suggestedStep);
+
+        /**
+         * @brief Корректировка шага с учетом запланированных событий
+         * @param currentTime Текущее время
+         * @param step Предлагаемый шаг
+         * @return Скорректированный шаг
+         */
+        Types::TimeType adjustStepForScheduledEvents(Types::TimeType currentTime, Types::TimeType step);
+
+        /**
+         * @brief Оценка погрешности интегрирования
+         * @return Оценка погрешности
+         */
+        double estimateError();
+
+        /**
+         * @brief Сохранение предыдущего состояния
+         * @return true в случае успеха, false в случае ошибки
+         */
+        bool savePreviousState();
+
+        /**
+         * @brief Восстановление предыдущего состояния
+         * @return true в случае успеха, false в случае ошибки
+         */
+        bool restorePreviousState();
     };
 
     /**
